@@ -1,0 +1,24 @@
+syntax = "proto3";
+package captif.proximity.v1;
+
+message WifiStationCounter {
+    uint64 timestamp = 1;
+    uint64 stations  = 2;
+}
+
+message WifiFullStationSeen {
+    uint64 tsoffset     = 1;
+    int32  rss          = 2;
+    uint32 frequency    = 3;
+}
+
+message WifiFullStationCollect {
+    uint32 frequency = 1;
+    repeated WifiFullStationSeen seen = 2;
+    string ssid = 3;
+}
+
+message WifiFullCollect {
+    uint64 timestamp = 1;
+    map<string, WifiFullStationCollect> stations = 2;
+}

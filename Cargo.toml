@@ -1,0 +1,33 @@
+[package]
+name = "carrier-captif"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+tinylogger          = "0.1"
+carrier             = {version = "0.11.5", features = ["openwrt"] }
+devguard-genesis    = "0.1.1"
+osaka               = "0.2"
+sha2                = "0.7"
+pcap                = "0.7.0"
+radiotap            = "1.3.0"
+enum_primitive      = "0.1.1"
+log                 = "0.4"
+mio-extras          = "2.0.5"
+prost               = "0.5.0"
+bytes               = "*"
+
+
+[profile.release]
+lto = true
+opt-level = "z"
+panic = 'abort'
+incremental = false
+
+[build-dependencies]
+prost-build = "0.5.0"
+
+
+[patch.crates-io]
+carrier             = { path = '/home/aep/proj/devguard/carrier' }
+devguard-genesis    = { path = '/home/aep/proj/devguard/genesis' }
