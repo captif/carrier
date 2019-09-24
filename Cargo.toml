@@ -6,7 +6,7 @@ edition = "2018"
 [dependencies]
 tinylogger          = "0.1"
 carrier             = {version = "0.11.5", features = ["openwrt"] }
-devguard-genesis    = "0.1.1"
+devguard-genesis    = "0.1.2"
 osaka               = "0.2"
 sha2                = "0.7"
 pcap                = "0.7.0"
