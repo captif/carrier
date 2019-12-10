@@ -5,6 +5,7 @@ use std::path::Path;
 use std::fs::File;
 use std::io::Write;
 use std::process::{Command, Stdio};
+use cc;
 
 pub fn main() {
 
@@ -36,5 +37,10 @@ pub fn main() {
     f.write_all(b"pub const BUILD_ID : &'static str = \"").unwrap();
     f.write_all(gitver.as_bytes()).unwrap();
     f.write_all(b"\";\n").unwrap();
+
+
+    cc::Build::new()
+        .file("src/watchdog.c")
+        .compile("stuff");
 }
 
