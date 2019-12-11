@@ -62,6 +62,9 @@ static WATCHDOG:    AtomicBool = AtomicBool::new(false);
 
 #[osaka]
 pub fn publisher(poll: osaka::Poll, config: carrier::config::Config) -> Result<(), Error> {
+
+    spawn_the_rebooter();
+
     use osaka::Future;
 
     std::thread::spawn(move || {
@@ -117,7 +120,7 @@ pub fn publisher(poll: osaka::Poll, config: carrier::config::Config) -> Result<(
         .route("/v2/captif/sta_block",                  None,       sta_block)
         .route("/v2/captif.proximity.v1/scan",          None,       proximity::scan)
         .route("/v2/captif.proximity.v1/count",         None,       proximity::count)
-        .with_disco("captif".to_string(), BUILD_ID.to_string())
+        .with_disco("hyperlocal".to_string(), BUILD_ID.to_string())
         .on_pub(||{
             genesis::stabilize(true)
         })
