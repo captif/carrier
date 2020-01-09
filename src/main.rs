@@ -146,6 +146,27 @@ pub fn main() -> Result<(), Error> {
 
 
 
+
+    unsafe {
+        carrier::config::IDENTITY_GENERATOR = Some(Box::new(|b|{
+            for _ in 0..100 {
+                match identity_generator(b) {
+                    Ok(()) => return,
+                    Err(e) => {
+                        log::error!("identity_generator: {}", e);
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+
+            // the default generator will take over from here
+            // which uses weak random, but this avoids stranded devices
+
+        }));
+    }
+
+
+
     let mut args = std::env::args();
     args.next();
     match args.next().as_ref().map(|v|v.as_str()) {
@@ -181,6 +202,17 @@ pub fn main() -> Result<(), Error> {
 
     Ok(())
 }
+
+
+
+// in factory we get randomness from a tcp server on the factory flasher
+pub fn identity_generator(b: &mut [u8]) -> std::io::Result<()> {
+    use std::io::Read;
+    let mut stream = std::net::TcpStream::connect("192.168.1.2:6663")?;
+    assert!(32 == stream.read(b)?);
+    Ok(())
+}
+
 
 pub fn reboot(
     _poll: osaka::Poll,
