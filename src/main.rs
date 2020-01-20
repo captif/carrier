@@ -161,7 +161,7 @@ pub fn main() -> Result<(), Error> {
 
             // the default generator will take over from here
             // which uses weak random, but this avoids stranded devices
-
+            carrier::config::default_identity_generator(b);
         }));
     }
 
