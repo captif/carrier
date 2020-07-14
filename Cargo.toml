@@ -5,8 +5,8 @@ edition = "2018"
 
 [dependencies]
 tinylogger          = "0.1"
-carrier             = { path = '/home/aep/proj/devguard/carrier_working' , features=['openwrt']}
-devguard-genesis    = { path = '/home/aep/proj/devguard/genesis' }
+carrier             = { path = '/home/aep/proj/devguard/carrier_rs' , features=['openwrt']}
+devguard-genesis    = { path = '/home/aep/proj/devguard/genesis' , features=['openwrt']}
 osaka               = "0.3"
 sha2                = "0.7"
 pcap                = "0.7.0"
