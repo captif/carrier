@@ -1,0 +1,23 @@
+[project]
+version = "0.1.0"
+name = "captif"
+cincludes = []
+cobjects = []
+pkgconfig = []
+cflags = []
+
+[dependencies]
+log = "1"
+mem = "1"
+err = "1"
+carrier = "1"
+msgpack = "1"
+
+[repos]
+zzser = "git://github.com/zetzit/zzser"
+
+
+[[artifacts]]
+type = "make"
+name = "captif"
+main = "captif::main"

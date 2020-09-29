@@ -1,0 +1,290 @@
+using err;
+using carrier;
+using buffer;
+using log;
+using carrier::stream;
+using slice;
+using hpack;
+using carrier::proto;
+using carrier::sha256;
+using <stdio.h>::{fopen, fread, fseek, fclose, FILE, fileno, fwrite, system, fprintf};
+using protonerf;
+using <sys/stat.h>::{fstat, (struct stat) as stat_t};
+using <stdlib.h>::{calloc, free};
+using <unistd.h>::{unlink};
+using mem;
+using madpack;
+using hex;
+using json;
+
+struct OngoingSend {
+    sha256::Sha256 sha;
+    u8 expected_hash[32];
+    FILE mut * fd;
+}
+
+static stream::Config GenesisMetaConfig = stream::Config {
+    path:       "/v3/genesis.v2/meta",
+    open:       genesis_meta_open,
+    index:      carrier::preshared::GENESIS,
+};
+
+static stream::Config GenesisGetConfig = stream::Config {
+    path:       "/v3/genesis.v2/get",
+    open:       genesis_get_open,
+    index:      carrier::preshared::GENESIS,
+};
+
+static stream::Config GenesisApplyConfig = stream::Config {
+    path:       "/v3/genesis.v2/apply",
+    open:       genesis_apply_open,
+    close:      genesis_apply_close,
+    stream:     genesis_apply_stream,
+    index:      carrier::preshared::GENESIS,
+    fragmented: genesis_apply_fragmented,
+};
+
+export fn register(carrier::endpoint::Endpoint mut*ep)
+{
+    ep->register_stream(&GenesisMetaConfig);
+    ep->register_stream(&GenesisGetConfig);
+    ep->register_stream(&GenesisApplyConfig);
+}
+
+
+fn genesis_meta_open(stream::Stream mut *self, err::Err mut*e, slice::Slice headers)
+    where err::checked(*e)
+    where slice::slice::integrity(&headers)
+{
+    genesis_open(self, e, headers, true);
+}
+
+fn genesis_get_open(stream::Stream mut *self, err::Err mut*e, slice::Slice headers)
+    where err::checked(*e)
+    where slice::slice::integrity(&headers)
+{
+    genesis_open(self, e, headers, false);
+}
+
+
+fn genesis_open(stream::Stream mut *self, err::Err mut*e, slice::Slice headers, bool meta)
+    where err::checked(*e)
+    where slice::slice::integrity(&headers)
+{
+    new+1000 index = madpack::from_preshared_index(e, carrier::preshared::genesis());
+    e->abort();
+
+    let mut stable = false;
+    let mut fd = (FILE mut*)fopen("/etc/config/genesis/current.json", "r");
+    if fd == 0 {
+        stable = true;
+        fd = (FILE mut*)fopen("/etc/config/genesis/stable.json", "r");
+        if fd == 0 {
+            let mut frame = self->stream(e, 100);
+            if !err::check(e) {
+                new enc = madpack::encode(frame, &index);
+                enc.kv_cstr(slice::from_cstr("error"), "cannot open /etc/config/genesis/stable.json");
+            }
+            self->close();
+            return;
+        }
+    }
+    new+5000 bf = buffer::make();
+    while bf.fread(fd) {}
+    fclose(fd);
+    new+800 dec = json::decode(e, bf.mem, bf.at);
+    if err::check(e) {
+        static_attest(err::checked(*e));
+        let mut frame = self->stream(e, 100);
+        new enc = madpack::encode(frame, &index);
+        static_attest(buffer::integrity(&e->trace));
+        enc.kv_strslice(slice::from_cstr("error"), e->trace.as_slice());
+        return;
+    }
+
+
+    new+5000 bo = buffer::make();
+    new enc = madpack::encode(bo.as_mut_slice(), &index);
+    // this is safe, but ssa broke somehow
+    unsafe {
+        if stable {
+            madpack::kv_map(&enc, slice::from_cstr("stable"));
+        } else {
+            madpack::kv_map(&enc, slice::from_cstr("current"));
+        }
+    }
+
+    if meta {
+        while dec.next(e) {
+            static_attest(err::checked(*e));
+            if dec.item == json::Item::Map && dec.key.eq_cstr("meta") {
+                break;
+            } else {
+                dec.skip(e);
+            }
+        }
+        static_attest(err::checked(*e));
+    }
+
+    madpack::from_json(&dec, &enc, e);
+    enc.end();
+
+    if err::check(e) {
+        static_attest(err::checked(*e));
+        let mut frame = self->stream(e, 100);
+        new enc = madpack::encode(frame, &index);
+        static_attest(buffer::integrity(&e->trace));
+        enc.kv_strslice(slice::from_cstr("error"), e->trace.as_slice());
+        return;
+    }
+
+    usize mut l = bo.at;
+    u8 * mut m = bo.mem;
+    while l > 500 {
+        m = m + 500;
+        l = l - 500;
+
+        static_attest(l <= 5000);
+        static_attest(l <= len(m));
+        static_attest(safe(m));
+        let mut frame = self->stream(e, l);
+        if !err::check(e) {
+            frame.append_bytes(m, l);
+        }
+    }
+    if l > 0 {
+        static_attest(err::checked(*e));
+        let mut frame = self->stream(e, l);
+        if !err::check(e) {
+            frame.append_bytes(m, l);
+        }
+    }
+
+    self->close();
+}
+
+
+
+struct Apply {
+    u32 fragments;
+    buffer::Buffer+3000 mut b;
+}
+
+fn genesis_apply_open(stream::Stream mut *self, err::Err mut*e, slice::Slice headers)
+    where err::checked(*e)
+    where slice::slice::integrity(&headers)
+{
+    let this = (Apply mut*)calloc(1, sizeof(Apply));
+    err::assert_safe(this);
+    this->b.make();
+    self->user2 = this;
+}
+
+fn genesis_apply_close(stream::Stream mut *self, err::Err mut*e)
+    where err::checked(*e)
+{
+    let this = (Apply mut*)self->user2;
+    free(this);
+    self->user2 = 0;
+}
+
+fn genesis_apply_fragmented(stream::Stream mut *self, err::Err mut*e, u32 fragments) -> bool
+{
+    let this = (Apply mut*)self->user2;
+    err::assert_safe(this);
+    if this->fragments > 0 {
+        return false;
+    }
+    this->fragments = fragments;
+    log::info("expecting %u fragments", fragments);
+    return true;
+}
+
+fn genesis_apply_stream(stream::Stream mut *self, err::Err mut*e, slice::Slice mut msg) -> bool
+    where err::checked(*e)
+    where slice::slice::integrity(&msg)
+{
+
+    let this = (Apply mut*)self->user2;
+    err::assert_safe(this);
+    static_attest(buffer::integrity(&this->b));
+    if this->fragments > 0 {
+        this->fragments -= 1;
+        this->b.append_slice(msg);
+        if this->fragments == 0 {
+            log::info("final fragment");
+            msg = this->b.as_slice();
+        } else {
+            log::info("still missing %u fragments", this->fragments);
+            return true;
+        }
+    }
+
+    new+1000 index = madpack::from_preshared_index(e, carrier::preshared::genesis());
+    e->abort();
+    new mp = madpack::decode(msg, &index);
+
+    bool mut done_something = false;
+
+    while mp.next_kv(e) {
+        static_attest(err::checked(*e));
+        if mp.item == madpack::Item::End {
+            break;
+        } else if mp.item == madpack::Item::Map && mp.key.eq_cstr("apply") {
+            let fd = (FILE mut*)fopen("/etc/config/genesis/current.json", "w");
+            if fd == 0 {
+                e->fail_with_errno("cannot open /etc/config/genesis/current.json");
+                let mut frame = self->stream(e, 100);
+                if !err::check(e) {
+                    new enc = madpack::encode(frame, &index);
+                    enc.kv_cstr(slice::from_cstr("error"), "cannot open /etc/config/genesis/current.json");
+                }
+                self->close();
+                return true;
+            }
+            fprintf(fd, "{\n");
+            madpack::to_json(&mp, e, fd, true, 1);
+            fprintf(fd, "}\n");
+            fclose(fd);
+            system("genesis apply");
+            done_something = true;
+        } else {
+            log::warn("ignoring unknown key %.*s", mp.key.size, mp.key.mem);
+            mp.skip(e);
+        }
+    }
+
+
+    if err::check(e) {
+        static_attest(buffer::integrity(&e->trace));
+        new+500 bt = buffer::from_slice(e->trace.as_slice());
+        e->elog();
+        e->ignore();
+        let mut frame = self->stream(e, 20 + bt.at);
+        if err::check(e) {return false;}
+        new enc = madpack::encode(frame, &index);
+        enc.kv_strslice(slice::from_cstr("error"), bt.as_slice());
+        self->close();
+        return true;
+    }
+
+    let mut frame = self->stream(e, 100);
+    if !err::check(e) {
+        new enc = madpack::encode(frame, &index);
+        if done_something {
+            enc.kv_bool(slice::from_cstr("applied"), true);
+        } else {
+            enc.kv_cstr(slice::from_cstr("error"), "missing action");
+        }
+    } else {
+        e->elog();
+        e->ignore();
+    }
+
+    self->close();
+    static_attest(safe(self->chan));
+    static_attest(safe(self->chan->endpoint));
+    self->chan->endpoint->shutdown(e);
+    return true;
+
+}

@@ -1,0 +1,99 @@
+using protonerf;
+export enum WifiStationCounter {
+  Timestamp = 1,
+  Stations = 2,
+}
+
+export fn WifiStationCounterTypes (usize index) -> protonerf::FieldType {
+    switch index {
+        WifiStationCounter::Timestamp => {
+            return protonerf::FieldType::Message;
+        }
+        WifiStationCounter::Stations => {
+            return protonerf::FieldType::Message;
+        }
+    }
+    return protonerf::FieldType::Skip;
+}
+
+
+export enum WifiFullStationSeen {
+  Tsoffset = 1,
+  Rss = 2,
+  Frequency = 3,
+}
+
+export fn WifiFullStationSeenTypes (usize index) -> protonerf::FieldType {
+    switch index {
+        WifiFullStationSeen::Tsoffset => {
+            return protonerf::FieldType::Message;
+        }
+        WifiFullStationSeen::Rss => {
+            return protonerf::FieldType::Message;
+        }
+        WifiFullStationSeen::Frequency => {
+            return protonerf::FieldType::Message;
+        }
+    }
+    return protonerf::FieldType::Skip;
+}
+
+
+export enum WifiFullStationCollect {
+  Frequency = 1,
+  Seen = 2,
+  Ssid = 3,
+}
+
+export fn WifiFullStationCollectTypes (usize index) -> protonerf::FieldType {
+    switch index {
+        WifiFullStationCollect::Frequency => {
+            return protonerf::FieldType::Message;
+        }
+        WifiFullStationCollect::Seen => {
+            return protonerf::FieldType::Message;
+        }
+        WifiFullStationCollect::Ssid => {
+            return protonerf::FieldType::Message;
+        }
+    }
+    return protonerf::FieldType::Skip;
+}
+
+
+export enum WifiFullStationCollectMapped {
+  K = 1,
+  V = 2,
+}
+
+export fn WifiFullStationCollectMappedTypes (usize index) -> protonerf::FieldType {
+    switch index {
+        WifiFullStationCollectMapped::K => {
+            return protonerf::FieldType::Message;
+        }
+        WifiFullStationCollectMapped::V => {
+            return protonerf::FieldType::Message;
+        }
+    }
+    return protonerf::FieldType::Skip;
+}
+
+
+export enum WifiFullCollect {
+  Timestamp = 1,
+  Stations = 2,
+}
+
+export fn WifiFullCollectTypes (usize index) -> protonerf::FieldType {
+    switch index {
+        WifiFullCollect::Timestamp => {
+            return protonerf::FieldType::Message;
+        }
+        WifiFullCollect::Stations => {
+            return protonerf::FieldType::Message;
+        }
+    }
+    return protonerf::FieldType::Skip;
+}
+
+
