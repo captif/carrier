@@ -13,8 +13,6 @@ using carrier::cmd_config;
 using carrier::cmd_vault;
 using carrier::cmd_stream;
 
-using genesis;
-
 static char * USAGE = "
 carrier 0.13 [zz]
 devguard carrier is a secure message system for IoT
@@ -37,7 +35,7 @@ export fn main(int mut argc, char ** argv) -> int
         char * arg = argv[1];
         static_attest(nullterm(arg));
 
-        new+1000  e     = err::make();
+        new+1000  e = err::make();
         new va = vault_toml::from_home_carriertoml(&e);
         e.abort();
 
@@ -72,6 +70,7 @@ using hpack;
 using slice;
 using <stdlib.h>::{calloc, free, system};
 using <pthread.h>::{pthread_create, pthread_t};
+using genesis;
 
 pub fn dopublish(vault::Vault va, int mut argc, char ** argv) -> int
     where (usize)argc == len(argv)
@@ -121,22 +120,21 @@ fn reboot_open(stream::Stream mut *self, err::Err mut*e, slice::Slice headers)
     where err::checked(*e)
     where slice::slice::integrity(&headers)
 {
-    let mut *frame = self->stream(e, 14);
+    let mut frame = self->stream(e, 14);
     if err::check(e) { return; }
 
-    hpack::encoder::encode(frame, e, (u8*)":status", 7, (u8*)"200", 3);
-    if err::check(e) { return; }
+    frame.append_cstr("rebooting\n");
     self->close();
 
     log::info("reboot requested");
 
-    pthread_t meh;
+    pthread_t mut meh = {0};
     if unsafe<int>(pthread_create(&meh, 0, reboot_later, 0)) != 0 {
         system("reboot");
     }
     static_attest(safe(self->chan));
     static_attest(safe(self->chan->endpoint));
-    self->chan->endpoint.shutdown(e);
+    self->chan->endpoint->shutdown(e);
 }
 
 fn reboot_later(void*_) -> void* {

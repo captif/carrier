@@ -5,10 +5,8 @@ using log;
 using carrier::stream;
 using slice;
 using hpack;
-using carrier::proto;
 using carrier::sha256;
 using <stdio.h>::{fopen, fread, fseek, fclose, FILE, fileno, fwrite, system, fprintf};
-using protonerf;
 using <sys/stat.h>::{fstat, (struct stat) as stat_t};
 using <stdlib.h>::{calloc, free};
 using <unistd.h>::{unlink};
@@ -243,7 +241,7 @@ fn genesis_apply_stream(stream::Stream mut *self, err::Err mut*e, slice::Slice m
                 return true;
             }
             fprintf(fd, "{\n");
-            madpack::to_json(&mp, e, fd, true, 1);
+            madpack::to_json(&mp, e, fd, true, 1, false);
             fprintf(fd, "}\n");
             fclose(fd);
             system("genesis apply");

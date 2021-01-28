@@ -7,16 +7,18 @@ carrier for captif
 
 | path                             | description          | usage                                             |
 |----------------------------------|----------------------|---------------------------------------------------|
-| /v0/ota                          | firmware update      | carrier fs ota <identity> ota firmware.img        |
+| /v3/carrier.sysinfo.v1/..        | system information   | carrier get sysinfo <identity>                    |
+| /v3/genesis.v2/..                | system configuration | carrier genesis <identity>                        |
 | /v0/reboot                       | reboot system        | carrier stream <identity> /v0/reboot              |
-| /v0/sft                          | file transfer        | carrier fs push <identity> /localfile /remotefile |
 | /v0/shell                        | shell                | carrier shell <identity>                          |
+
+
+
+| /v0/ota                          | firmware update      | carrier fs ota <identity> ota firmware.img        |
+| /v0/sft                          | file transfer        | carrier fs push <identity> /localfile /remotefile |
 | /v2/captif.proximity.v1/scan     | proximity            | see proximity documentation                       |
 | /v2/captif.proximity.v1/count    | proximity            | see proximity documentation                       |
-| /v2/captif/sta_block             | station bans         | see  sta_block documentation                      |
-| /v2/carrier.sysinfo.v1/netsurvey | network discovery    | carrier netsurvey <identity>                      |
-| /v2/carrier.sysinfo.v1/sysinfo   | system information   | carrier sysinfo <identity>                        |
-| /v2/genesis.v1                   | system configuration | carrier genesis <identity>                        |
+| /v2/captif/sta_block             | station bans         | see sta_block documentation                       |
 
 
 
