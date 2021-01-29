@@ -1,6 +1,8 @@
 #![feature(generators, generator_trait)]
 
-use carrier::error::Error;
+extern crate carrier_rs;
+
+use carrier_rs::error::Error;
 use std::env;
 use devguard_genesis as genesis;
 use osaka::osaka;
@@ -61,7 +63,7 @@ pub fn spawn_the_rebooter() {
 static WATCHDOG:    AtomicBool = AtomicBool::new(false);
 
 #[osaka]
-pub fn publisher(poll: osaka::Poll, config: carrier::config::Config) -> Result<(), Error> {
+pub fn publisher(poll: osaka::Poll, config: carrier_rs::config::Config) -> Result<(), Error> {
 
     spawn_the_rebooter();
 
@@ -108,14 +110,14 @@ pub fn publisher(poll: osaka::Poll, config: carrier::config::Config) -> Result<(
 
 
 
-    let mut publisher   = carrier::publisher::new(config)
-        .route("/v0/shell",                             None,       carrier::publisher::shell::main)
-        .route("/v0/sft",                               None,       carrier::publisher::sft::main)
+    let mut publisher   = carrier_rs::publisher::new(config)
+        .route("/v0/shell",                             None,       carrier_rs::publisher::shell::main)
+        .route("/v0/sft",                               None,       carrier_rs::publisher::sft::main)
         .route("/v0/reboot",                            None,       reboot)
-        .route("/v0/ota",                               None,       carrier::publisher::openwrt::ota)
-        .route("/v2/carrier.certificate.v1/authorize",  Some(1024), carrier::publisher::authorization::main)
-        .route("/v2/carrier.sysinfo.v1/sysinfo",        None,       carrier::publisher::sysinfo::sysinfo)
-        .route("/v2/carrier.sysinfo.v1/netsurvey",      None,       carrier::publisher::openwrt::netsurvey)
+        .route("/v0/ota",                               None,       carrier_rs::publisher::openwrt::ota)
+        .route("/v2/carrier.certificate.v1/authorize",  Some(1024), carrier_rs::publisher::authorization::main)
+        .route("/v2/carrier.sysinfo.v1/sysinfo",        None,       carrier_rs::publisher::sysinfo::sysinfo)
+        .route("/v2/carrier.sysinfo.v1/netsurvey",      None,       carrier_rs::publisher::openwrt::netsurvey)
         .route("/v2/genesis.v1",                        Some(4048), genesis::genesis_stream)
         .route("/v2/captif/sta_block",                  None,       sta_block)
         .route("/v2/captif.proximity.v1/scan",          None,       proximity::scan)
@@ -148,7 +150,7 @@ pub fn main() -> Result<(), Error> {
 
 
     unsafe {
-        carrier::config::IDENTITY_GENERATOR = Some(Box::new(|b|{
+        carrier_rs::config::IDENTITY_GENERATOR = Some(Box::new(|b|{
             for _ in 0..100 {
                 match identity_generator(b) {
                     Ok(()) => return,
@@ -161,7 +163,7 @@ pub fn main() -> Result<(), Error> {
 
             // the default generator will take over from here
             // which uses weak random, but this avoids stranded devices
-            carrier::config::default_identity_generator(b);
+            carrier_rs::config::default_identity_generator(b);
         }));
     }
 
@@ -175,20 +177,20 @@ pub fn main() -> Result<(), Error> {
             genesis::stabilize(false);
 
             let poll    = osaka::Poll::new();
-            let config  = carrier::config::load()?;
+            let config  = carrier_rs::config::load()?;
             publisher(poll, config).run()?;
 
 
         }
         Some("identity") => {
-            let config = carrier::config::load()?;
+            let config = carrier_rs::config::load()?;
             println!("{}", config.secret.identity());
         }
         Some("genesis") => {
             genesis::genesis().unwrap();
         }
         Some("lolcast") => {
-            let config = carrier::config::load()?;
+            let config = carrier_rs::config::load()?;
             let msg = format!("CR1:BTN:{}", config.secret.identity()).as_bytes().to_vec();
             let socket = std::net::UdpSocket::bind("224.0.0.251:0")?;
             socket.set_broadcast(true).expect("set_broadcast call failed");
@@ -216,12 +218,12 @@ pub fn identity_generator(b: &mut [u8]) -> std::io::Result<()> {
 
 pub fn reboot(
     _poll: osaka::Poll,
-    _headers: carrier::headers::Headers,
-    _identity: &carrier::identity::Identity,
-    mut stream: carrier::endpoint::Stream,
+    _headers: carrier_rs::headers::Headers,
+    _identity: &carrier_rs::identity::Identity,
+    mut stream: carrier_rs::endpoint::Stream,
 ) -> Option<osaka::Task<()>> {
     use std::process::Command;
-    stream.send(carrier::headers::Headers::ok().encode());
+    stream.send(carrier_rs::headers::Headers::ok().encode());
     Command::new("/bin/sh")
         .args(vec!["-c" , "reboot"])
         .spawn().unwrap();
@@ -231,16 +233,16 @@ pub fn reboot(
 
 pub fn sta_block(
     _poll: osaka::Poll,
-    headers: carrier::headers::Headers,
-    _identity: &carrier::identity::Identity,
-    mut stream: carrier::endpoint::Stream,
+    headers: carrier_rs::headers::Headers,
+    _identity: &carrier_rs::identity::Identity,
+    mut stream: carrier_rs::endpoint::Stream,
 ) -> Option<osaka::Task<()>> {
     use std::process::Command;
 
     let ban_time = match headers.get(b"time").and_then(|v|String::from_utf8_lossy(v).parse::<u64>().ok()) {
         Some(v) => v,
         None  => {
-            stream.send(carrier::headers::Headers::with_error(400, "time header invalid or missing").encode());
+            stream.send(carrier_rs::headers::Headers::with_error(400, "time header invalid or missing").encode());
             return None;
         }
     };
@@ -248,7 +250,7 @@ pub fn sta_block(
     let addr = match headers.get(b"addr") {
         Some(v) => String::from_utf8_lossy(&v),
         None  => {
-            stream.send(carrier::headers::Headers::with_error(400, "addr header missing").encode());
+            stream.send(carrier_rs::headers::Headers::with_error(400, "addr header missing").encode());
             return None;
         }
     };
@@ -256,7 +258,7 @@ pub fn sta_block(
     let interface = match headers.get(b"interface") {
         Some(v) => String::from_utf8_lossy(&v),
         None  => {
-            stream.send(carrier::headers::Headers::with_error(400, "interface header missing").encode());
+            stream.send(carrier_rs::headers::Headers::with_error(400, "interface header missing").encode());
             return None;
         }
     };
@@ -274,17 +276,17 @@ pub fn sta_block(
     let status = match status {
         Ok(v) => v,
         Err(e) => {
-            stream.send(carrier::headers::Headers::with_error(500, format!("cannot call ubus: {}", e)).encode());
+            stream.send(carrier_rs::headers::Headers::with_error(500, format!("cannot call ubus: {}", e)).encode());
             return None;
         }
     };
 
     if !status.success() {
-        stream.send(carrier::headers::Headers::with_error(500, "ubus call failed").encode());
+        stream.send(carrier_rs::headers::Headers::with_error(500, "ubus call failed").encode());
         return None;
     };
 
-    stream.send(carrier::headers::Headers::ok().encode());
+    stream.send(carrier_rs::headers::Headers::ok().encode());
 
     None
 }

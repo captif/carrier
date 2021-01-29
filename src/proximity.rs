@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use sha2::{Sha256, Digest};
 use enum_primitive::*;
 use log::{warn, error};
-use carrier::*;
+use carrier_rs::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use mio_extras::channel;
