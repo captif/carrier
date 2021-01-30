@@ -181,6 +181,7 @@ pub fn collect(
                     ssid: String::new(),
                 });
                 sta.ssid = ssid.unwrap_or(String::new());
+
                 if let Some(ant) = radiotap.antenna_signal {
                     let frq =  radiotap.channel.map(|v|v.freq).unwrap_or(0);
 
@@ -412,9 +413,15 @@ pub fn count_(poll: osaka::Poll, headers: headers::Headers, mut stream: endpoint
     thread::spawn(move ||{
         loop {
             let collect = collect(&mut scanna.device, bulk_scan_time, min_rss, true);
+            let mut counter = 0;
+            for (_ , station) in &collect.stations {
+                if station.seen.len() > 0 {
+                    counter += 1;
+                }
+            }
             let collect = proto::WifiStationCounter {
                 timestamp:  collect.timestamp,
-                stations:   collect.stations.len() as u64,
+                stations:   counter,
             };
             if let Err(_) = tx.send(collect) {
                 println!("collect channel died. exit collect thread");
