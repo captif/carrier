@@ -101,7 +101,7 @@ fn genesis_open(stream::Stream mut *self, err::Err mut*e, slice::Slice headers, 
     }
 
 
-    new+5000 bo = buffer::make();
+    new+10000 bo = buffer::make();
     new enc = madpack::encode(bo.as_mut_slice(), &index);
     // this is safe, but ssa broke somehow
     unsafe {
@@ -138,24 +138,40 @@ fn genesis_open(stream::Stream mut *self, err::Err mut*e, slice::Slice headers, 
 
     usize mut l = bo.at;
     u8 * mut m = bo.mem;
+
+
+    let fragments = l/500;
+    if fragments >0 {
+        self->fragmented(e, fragments + 1);
+        if err::check(e) {
+            return;
+        }
+    }
+
     while l > 500 {
+
+        let mut frame = self->stream(e, 500);
+        if err::check(e) {
+            e->elog();
+        } else {
+            frame.append_bytes(m, 500);
+        }
+
         m = m + 500;
         l = l - 500;
 
         static_attest(l <= 5000);
         static_attest(l <= len(m));
         static_attest(safe(m));
-        let mut frame = self->stream(e, l);
-        if !err::check(e) {
-            frame.append_bytes(m, l);
-        }
     }
-    if l > 0 {
-        static_attest(err::checked(*e));
-        let mut frame = self->stream(e, l);
-        if !err::check(e) {
-            frame.append_bytes(m, l);
-        }
+
+    static_attest(err::checked(*e));
+    static_attest(l <= 500);
+    let mut frame = self->stream(e, l);
+    if err::check(e) {
+        e->elog();
+    } else {
+        frame.append_bytes(m, l);
     }
 
     self->close();

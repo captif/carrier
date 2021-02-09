@@ -71,6 +71,7 @@ using slice;
 using <stdlib.h>::{calloc, free, system};
 using <pthread.h>::{pthread_create, pthread_t};
 using genesis;
+using carrier::pub_local;
 
 pub fn dopublish(vault::Vault va, int mut argc, char ** argv) -> int
     where (usize)argc == len(argv)
@@ -104,6 +105,9 @@ pub fn dopublish(vault::Vault va, int mut argc, char ** argv) -> int
     ep.register_stream(&OTAConfig);
     ep.register_stream(&RebootConfig);
     genesis::register(&ep);
+    pub_local::register(&ep, "/v3/captif.proximity.v1/scan",  "/var/run/proximity.scan.seq.socket");
+    pub_local::register(&ep, "/v3/captif.proximity.v1/count", "/var/run/proximity.count.seq.socket");
+
     system("genesis settle");
 
     io::await(&async, &e, endpoint::poll, &ep, time::infinite());
