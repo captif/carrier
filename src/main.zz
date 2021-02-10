@@ -107,12 +107,30 @@ pub fn dopublish(vault::Vault va, int mut argc, char ** argv) -> int
     genesis::register(&ep);
     pub_local::register(&ep, "/v3/captif.proximity.v1/scan",  "/var/run/proximity.scan.seq.socket");
     pub_local::register(&ep, "/v3/captif.proximity.v1/count", "/var/run/proximity.count.seq.socket");
+    ep.register_stream(&SinkConfig);
 
     system("genesis settle");
 
     io::await(&async, &e, endpoint::poll, &ep, time::infinite());
     e.abort();
     return 0;
+}
+static stream::Config SinkConfig = stream::Config {
+    path:       "/v0/debug_sink",
+    open:       sink_open,
+    stream:     sink_stream,
+};
+
+fn sink_open(stream::Stream mut *self, err::Err mut*e, slice::Slice headers)
+    where err::checked(*e)
+    where slice::slice::integrity(&headers)
+{
+}
+
+fn sink_stream(stream::Stream mut *self, err::Err mut*e, slice::Slice frame)
+    where err::checked(*e)
+    where slice::slice::integrity(&frame)
+{
 }
 
 static stream::Config RebootConfig = stream::Config {
