@@ -191,7 +191,7 @@ pub fn main() -> Result<(), Error> {
         }
         Some("lolcast") => {
             let config = carrier_rs::config::load()?;
-            let msg = format!("CR1:BTN:{}", config.secret.identity()).as_bytes().to_vec();
+            let msg = format!("CR1:BTN:{}", config.secret.identity().to_string_bc58()).as_bytes().to_vec();
             let socket = std::net::UdpSocket::bind("224.0.0.251:0")?;
             socket.set_broadcast(true).expect("set_broadcast call failed");
             socket.send_to(&msg, "224.0.0.251:8444").expect("couldn't send message");
