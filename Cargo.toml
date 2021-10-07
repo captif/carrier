@@ -20,7 +20,7 @@ libc                = "0.2"
 chrono              = "0.4"
 rand                = "0.6"
 nix                 = "0.15"
-
+lazy_static         = "1.4"
 
 [profile.release]
 lto = true

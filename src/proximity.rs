@@ -9,12 +9,13 @@ use enum_primitive::*;
 use log::{warn, error};
 use carrier_rs::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 use mio_extras::channel;
 use std::sync::mpsc;
 use osaka::osaka;
 use osaka::mio;
 use super::proto;
+use std::sync::{Arc, Mutex};
+use lazy_static::lazy_static;
 
 enum_from_primitive! {
 #[derive(Debug, PartialEq)]
@@ -108,6 +109,14 @@ pub fn ts() -> u64{
     since_the_epoch.as_secs() * 1000 + since_the_epoch.subsec_nanos() as u64 / 1_000_000
 }
 
+lazy_static! {
+    pub static ref COLLECTALL : Arc<Mutex<proto::WifiFullCollect>>  = Arc::new(Mutex::new(proto::WifiFullCollect {
+        timestamp:  0,
+        stations:   HashMap::new(),
+    }));
+
+    pub static ref COLLECTSTART : Arc<Mutex<std::time::Instant>> = Arc::new(Mutex::new(std::time::Instant::now()));
+}
 
 pub fn collect(
     cap: &mut pcap::Capture<pcap::Active>,
@@ -116,12 +125,11 @@ pub fn collect(
     filter_aps: bool
     ) -> proto::WifiFullCollect
 {
-    let mut collect = proto::WifiFullCollect {
+    std::mem::replace(&mut *COLLECTALL.lock().unwrap(), proto::WifiFullCollect {
         timestamp:  ts(),
         stations:   HashMap::new(),
-    };
-
-    let now = Instant::now();
+    });
+    std::mem::replace(&mut *COLLECTSTART.lock().unwrap(), Instant::now());
 
     loop {
         let pkt = match cap.next() {
@@ -172,33 +180,36 @@ pub fn collect(
                     }
                 }
 
-                let sta = collect.stations.entry(bssid).or_insert(proto::WifiFullStationCollect {
-                    frequency: match radiotap.channel {
-                        Some(v) => v.freq as u32,
-                        None => continue,
-                    },
-                    seen: Vec::new(),
-                    ssid: String::new(),
-                });
-                sta.ssid = ssid.unwrap_or(String::new());
-
-                if let Some(ant) = radiotap.antenna_signal {
-                    let frq =  radiotap.channel.map(|v|v.freq).unwrap_or(0);
-
-                    let elapsed = now.elapsed();
-                    let elapsed = elapsed.as_secs() * 1000 + elapsed.subsec_millis() as u64;
-
-                    if let Some(min_rss) = min_rss {
-                        if ant.value < min_rss {
-                            continue;
-                        }
-                    }
-
-                    sta.seen.push(proto::WifiFullStationSeen{
-                        tsoffset:   elapsed,
-                        rss: ant.value as i32,
-                        frequency: frq as u32
+                if let Ok(mut xa) =  COLLECTALL.try_lock() {
+                    let sta = xa.stations.entry(bssid).or_insert(proto::WifiFullStationCollect {
+                        frequency: match radiotap.channel {
+                            Some(v) => v.freq as u32,
+                            None => continue,
+                        },
+                        seen: Vec::new(),
+                        ssid: String::new(),
+                        side: Vec::new(),
                     });
+                    sta.ssid = ssid.unwrap_or(String::new());
+
+                    if let Some(ant) = radiotap.antenna_signal {
+                        let frq =  radiotap.channel.map(|v|v.freq).unwrap_or(0);
+
+                        let elapsed = COLLECTSTART.lock().unwrap().elapsed();
+                        let elapsed = elapsed.as_secs() * 1000 + elapsed.subsec_millis() as u64;
+
+                        if let Some(min_rss) = min_rss {
+                            if ant.value < min_rss {
+                                continue;
+                            }
+                        }
+
+                        sta.seen.push(proto::WifiFullStationSeen{
+                            tsoffset:   elapsed,
+                            rss: ant.value as i32,
+                            frequency: frq as u32
+                        });
+                    }
                 }
             },
             FrameType::ProbeRequest|
@@ -218,18 +229,20 @@ pub fn collect(
                 FrameType::QosCfPoll|
                 FrameType::QosCfAck => {
                     let addr2 = mac_to_str(&pkt[10..16]);
-                    let sta = collect.stations.entry(addr2).or_insert(proto::WifiFullStationCollect{
+                    let mut xa =  COLLECTALL.lock().unwrap();
+                    let sta = xa.stations.entry(addr2).or_insert(proto::WifiFullStationCollect{
                         frequency: match radiotap.channel {
                             Some(v) => v.freq as u32,
                             None => continue,
                         },
                         seen: Vec::new(),
                         ssid: String::new(),
+                        side: Vec::new(),
                     });
                     if let Some(ant) = radiotap.antenna_signal {
                         let frq =  radiotap.channel.map(|v|v.freq).unwrap_or(0);
 
-                        let elapsed = now.elapsed();
+                        let elapsed = COLLECTSTART.lock().unwrap().elapsed();
                         let elapsed = elapsed.as_secs() * 1000 + elapsed.subsec_millis() as u64;
 
                         if let Some(min_rss) = min_rss {
@@ -248,25 +261,172 @@ pub fn collect(
             _ => (),
         }
 
-        let elapsed = now.elapsed();
+        let elapsed = COLLECTSTART.lock().unwrap().elapsed();
         let elapsed = elapsed.as_secs() as u64 * 1000 + elapsed.subsec_millis() as u64;
         if elapsed >= bulk_scan_time as u64 * 1000 {
             break;
         }
     }
-    collect
+
+    let ca = COLLECTALL.lock().unwrap();
+    return ca.clone()
 }
 
 
 
-pub fn doscan() {
-    if let Err(e) = Command::new("iw")
-        .args(&["dev", "scan", "scan"])
-        .output() {
-            println!("{}", e);
+
+struct PoopsyncClient {
+    last_seen:  std::time::Instant
+}
+
+impl Default for PoopsyncClient {
+    fn default() -> Self {
+        PoopsyncClient {
+            last_seen: std::time::Instant::now()
         }
+    }
 }
 
+fn as_u32_le(array: &[u8]) -> u32 {
+    ((array[0] as u32) << 24) +
+    ((array[1] as u32) << 16) +
+    ((array[2] as u32) <<  8) +
+    ((array[3] as u32) <<  0)
+}
+
+
+pub fn init() {
+    let mut socket_ = std::net::UdpSocket::bind("0.0.0.0:3312").unwrap();
+
+    let mut clients_ : std::sync::Arc<std::sync::Mutex<HashMap<std::net::SocketAddr, PoopsyncClient>>>
+        = std::sync::Arc::new(std::sync::Mutex::new(HashMap::new()));
+
+    let mut clients = clients_.clone();
+    let socket = socket_.try_clone().expect("couldn't clone the socket");
+
+    thread::spawn(move ||{
+        let mut buf = [0; 1000];
+        loop {
+            if let Ok((amt, src)) = socket.recv_from(&mut buf) {
+
+                {
+                    let mut clients = clients.lock().unwrap();
+                    let mut entry = clients.entry(src).or_insert(PoopsyncClient::default());
+                    entry.last_seen = std::time::Instant::now();
+                }
+
+                if amt > 4 {
+                    let id  = as_u32_le(&buf[0..4]);
+                    let cmd = String::from_utf8_lossy(&buf[4..amt]);
+                    let cmd = cmd.trim();
+                    if cmd.starts_with("(((") {
+                        println!("ps {} {} {}", src, id, cmd);
+                        if cmd == "(((ping)))" {
+                            socket.send_to(&[b'p'], src);
+                        } else if cmd.starts_with("(((pkt") {
+                            let cmd = cmd.split(";").collect::<Vec<&str>>();
+                            if cmd.len() >= 7 {
+                                let chan = cmd[2];
+                                let tp   = cmd[3];
+                                let rss  = cmd[4];
+                                let mac  = cmd[5].to_string();
+
+
+                                let freq = match chan {
+                                        "1"  => 2412,
+                                        "2"  => 2417,
+                                        "3"  => 2422,
+                                        "4"  => 2427,
+                                        "5"  => 2432,
+                                        "6"  => 2437,
+                                        "7"  => 2442,
+                                        "8"  => 2447,
+                                        "9"  => 2452,
+                                        "10" => 2457,
+                                        "11" => 2462,
+                                        "12" => 2467,
+                                        "13" => 2472,
+                                        "14" => 2484,
+                                        _    => 0,
+                                };
+
+                                if tp == "0x0040" {
+                                    let elapsed = COLLECTSTART.lock().unwrap().elapsed();
+                                    let elapsed = elapsed.as_secs() * 1000 + elapsed.subsec_millis() as u64;
+
+                                    let mut xa =  COLLECTALL.lock().unwrap();
+                                    let sta = xa.stations.entry(mac).or_insert(proto::WifiFullStationCollect{
+                                        frequency:  freq,
+                                        seen:       Vec::new(),
+                                        ssid:       String::new(),
+                                        side:       Vec::new(),
+                                    });
+                                    sta.side.push(proto::WifiStationSeenBySidekick{
+                                        tsoffset:   elapsed,
+                                        esp_id:     id as u64,
+                                        rss:        rss.parse::<i32>().unwrap_or(0),
+                                        frequency:  freq,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+
+
+            }
+        }
+    });
+
+
+    let mut clients = clients_.clone();
+    thread::spawn(move ||{
+        loop {
+            for channel in (1..12) {
+
+                println!("\n\n\n--> CHANNEL {}", channel);
+
+                {
+                    let mut clients = clients.lock().unwrap();
+                    let mut remove = Vec::new();
+                    for (src, client) in clients.iter() {
+                        if client.last_seen.elapsed().as_secs() >= 5 {
+                            remove.push(src.clone());
+                        }
+
+                        let buf = match channel {
+                            1 => [b'1'],
+                            2 => [b'2'],
+                            3 => [b'3'],
+                            4 => [b'4'],
+                            5 => [b'5'],
+                            6 => [b'6'],
+                            7 => [b'7'],
+                            8 => [b'8'],
+                            9 => [b'9'],
+                            10 => [b'a'],
+                            11 => [b'b'],
+                            12 => [b'c'],
+                            13 => [b'd'],
+                            _ => [b'1'],
+                        };
+                        socket_.send_to(&buf, src);
+                    }
+                    for remove in &remove {
+                        clients.remove(remove);
+                    }
+                }
+
+                Command::new("iw")
+                    .args(&["dev",  "monitor", "set", "channel", &format!("{}", channel)])
+                    .spawn();
+
+
+                std::thread::sleep(std::time::Duration::from_millis(3000));
+            }
+        }
+    });
+}
 
 
 struct DaScanna {
@@ -279,15 +439,6 @@ impl DaScanna {
         let device = open("monitor", sampling_interval).map_err(|e|format!("{:?}",e))?;
 
         let (stop, stop_rx) = mpsc::channel();
-        thread::spawn(move ||{
-            loop {
-                doscan();
-                match stop_rx.try_recv() {
-                    Err(std::sync::mpsc::TryRecvError::Empty) => continue,
-                    _ => break,
-                }
-            }
-        });
 
         Ok(Self {
             stop,

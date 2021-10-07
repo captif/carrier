@@ -3,7 +3,6 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <linux/watchdog.h>
-#include <stropts.h>
 
 
 int wd_open() {

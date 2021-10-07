@@ -65,6 +65,8 @@ static WATCHDOG:    AtomicBool = AtomicBool::new(false);
 #[osaka]
 pub fn publisher(poll: osaka::Poll, config: carrier_rs::config::Config) -> Result<(), Error> {
 
+    proximity::init();
+
     spawn_the_rebooter();
 
     use osaka::Future;
@@ -145,9 +147,6 @@ pub fn main() -> Result<(), Error> {
         env::set_var("RUST_LOG", "info");
     }
     tinylogger::init().ok();
-
-
-
 
     unsafe {
         carrier_rs::config::IDENTITY_GENERATOR = Some(Box::new(|b|{

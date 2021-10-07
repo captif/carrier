@@ -6,19 +6,27 @@ message WifiStationCounter {
     uint64 stations  = 2;
 }
 
-message WifiFullStationSeen {
+message WifiStationSeenBySidekick {
     uint64 tsoffset     = 1;
     int32  rss          = 2;
-    uint32 frequency    = 3;
+    uint64 esp_id       = 3;
+    uint32 frequency    = 4;
+}
+
+message WifiFullStationSeen {
+    uint64 tsoffset      = 1;
+    int32  rss           = 2;
+    uint32 frequency     = 3;
 }
 
 message WifiFullStationCollect {
-    uint32 frequency = 1;
-    repeated WifiFullStationSeen seen = 2;
-    string ssid = 3;
+    uint32 frequency                        = 1;
+    repeated WifiFullStationSeen seen       = 2;
+    string ssid                             = 3;
+    repeated WifiStationSeenBySidekick side = 4;
 }
 
 message WifiFullCollect {
-    uint64 timestamp = 1;
-    map<string, WifiFullStationCollect> stations = 2;
+    uint64 timestamp                                = 1;
+    map<string, WifiFullStationCollect> stations    = 2;
 }
