@@ -419,10 +419,10 @@ pub fn init() {
 
                 Command::new("iw")
                     .args(&["dev",  "monitor", "set", "channel", &format!("{}", channel)])
-                    .spawn();
+                    .status();
 
 
-                std::thread::sleep(std::time::Duration::from_millis(3000));
+                std::thread::sleep(std::time::Duration::from_millis(1000));
             }
         }
     });
